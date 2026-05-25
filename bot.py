@@ -406,9 +406,7 @@ def main_keyboard():
     """Main menu using Inline Keyboard."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Топшириқ қўшиш", callback_data="main_add_task"),
-         InlineKeyboardButton("📋 Топшириқлар жадвали", callback_data="main_schedule")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="main_stats"),
-         InlineKeyboardButton("👥 Ходимлар рейтинги", callback_data="main_rating")]
+         InlineKeyboardButton("📋 Топшириқлар жадвали", callback_data="main_schedule")]
     ])
 
 def employee_keyboard(prefix: str):
@@ -463,6 +461,8 @@ def schedule_keyboard():
          InlineKeyboardButton("🗑 Топшириқ ўчириш", callback_data="sched_delete")],
         [InlineKeyboardButton("💬 Изоҳ/Файл қўшиш", callback_data="sched_add_attachment"),
          InlineKeyboardButton("📥 Excel'га экспорт", callback_data="sched_export")],
+        [InlineKeyboardButton("📊 Статистика", callback_data="main_stats"),
+         InlineKeyboardButton("👥 Ходимлар рейтинги", callback_data="main_rating")],
         [InlineKeyboardButton("❌ Бекор қилиш", callback_data="cancel_action")]
     ])
 

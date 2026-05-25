@@ -2636,6 +2636,34 @@ def main():
     app.post_init = on_startup
     app.post_shutdown = on_shutdown
 
+    # Start Web Health Check Server for Render free tier compliance
+    import http.server
+    import threading
+    
+    class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path in ('/healthz', '/'):
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b"OK")
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"Not Found")
+                
+        def log_message(self, format, *args):
+            return
+
+    def run_health_server():
+        port = int(os.environ.get("PORT", 8080))
+        logger.info(f"Health check server listening on port {port}...")
+        server = http.server.HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        server.serve_forever()
+
+    logger.info("Starting web health check server...")
+    threading.Thread(target=run_health_server, daemon=True).start()
+
     logger.info("Bot started. Daily report scheduled at 16:00, morning reminders at 09:00, in-progress tasks at 11:00.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

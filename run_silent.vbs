@@ -1,0 +1,1 @@
+Set WshShell = CreateObject(" WScript.Shell\)\r\nWshShell.Run chr(34) & \E:\Новая ЭРА\БАЗА\Ўзимзаникилар\Саидкамолов Элёр\Сунъий интелект ёрдамидаги лойи?алар\Qurilish_bot\start_bot.bat\ & chr(34), 0\r\nSet WshShell = Nothing

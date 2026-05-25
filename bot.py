@@ -409,6 +409,13 @@ def main_keyboard():
          InlineKeyboardButton("📋 Топшириқлар жадвали", callback_data="main_schedule")]
     ])
 
+def main_reply_keyboard():
+    """Main persistent bottom keyboard."""
+    return ReplyKeyboardMarkup([
+        ["➕ Топшириқ қўшиш", "📋 Топшириқлар жадвали"],
+        ["📋 Менинг вазифаларим"]
+    ], resize_keyboard=True)
+
 def employee_keyboard(prefix: str):
     """Employee selection inline keyboard."""
     keyboard = []
@@ -498,11 +505,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
         await update.callback_query.message.reply_text(
-            text, parse_mode="HTML", reply_markup=main_keyboard()
+            text, parse_mode="HTML", reply_markup=main_reply_keyboard()
         )
     else:
         await update.message.reply_text(
-            text, parse_mode="HTML", reply_markup=main_keyboard()
+            text, parse_mode="HTML", reply_markup=main_reply_keyboard()
         )
     return ConversationHandler.END
 
@@ -525,7 +532,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer()
         await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=main_keyboard())
     else:
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard())
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_reply_keyboard())
     return ConversationHandler.END
 
 async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -751,7 +758,7 @@ async def schedule_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = update.message.text
         if text == "❌ Бекор қилиш":
-            await update.message.reply_text("⬅️ Асосий меню", reply_markup=main_keyboard())
+            await update.message.reply_text("⬅️ Асосий меню", reply_markup=main_reply_keyboard())
             return ConversationHandler.END
             
     if text == "sched_general" or text == "🌐 Умумий жадвал":
@@ -1619,9 +1626,9 @@ async def view_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tasks:
         msg_text = "📊 Статистика учун топшириқлар йўқ."
         if query:
-            await query.message.reply_text(msg_text, reply_markup=main_keyboard())
+            await query.message.reply_text(msg_text, reply_markup=schedule_keyboard())
         else:
-            await update.message.reply_text(msg_text, reply_markup=main_keyboard())
+            await update.message.reply_text(msg_text, reply_markup=schedule_keyboard())
         return
     
     total = stats['total']
@@ -1702,15 +1709,15 @@ async def view_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo=chart_url,
             caption=text,
             parse_mode="HTML",
-            reply_markup=main_keyboard()
+            reply_markup=schedule_keyboard()
         )
     except Exception as e:
         logger.error(f"Could not send chart: {e}")
         # Fallback to plain text if photo sending fails
         if query:
-            await query.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard())
+            await query.message.reply_text(text, parse_mode="HTML", reply_markup=schedule_keyboard())
         else:
-            await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard())
+            await update.message.reply_text(text, parse_mode="HTML", reply_markup=schedule_keyboard())
 
 async def employee_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -1734,9 +1741,9 @@ async def employee_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not emp_stats:
         msg_text = "Ҳозирча маълумот йўқ."
         if query:
-            await query.message.reply_text(msg_text, reply_markup=main_keyboard())
+            await query.message.reply_text(msg_text, reply_markup=schedule_keyboard())
         else:
-            await update.message.reply_text(msg_text, reply_markup=main_keyboard())
+            await update.message.reply_text(msg_text, reply_markup=schedule_keyboard())
         return
     
     text = "🏆 <b>ХОДИМЛАР РЕЙТИНГИ</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1750,9 +1757,9 @@ async def employee_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     if query:
-        await query.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard())
+        await query.message.reply_text(text, parse_mode="HTML", reply_markup=schedule_keyboard())
     else:
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard())
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=schedule_keyboard())
 
 # ─── Command Handlers ─────────────────────────────────────────────────────────
 

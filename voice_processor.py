@@ -20,7 +20,9 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyChUWr8PSabgRkLKoWU-XT_hDpGqSYI2Pc")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY is missing! Please configure it in Render's Environment Variables tab.")
 
 # Yangi SDK client
 client = genai.Client(api_key=GEMINI_API_KEY)

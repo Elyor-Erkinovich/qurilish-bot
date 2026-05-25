@@ -32,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN", "8918133105:AAHz3oy-uTrzauVJvtyFir1CINfJHWE0bYk")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAWApWixnBNjJPPpCfAVRtUNHOPziNgAPk")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 db = Database()
 

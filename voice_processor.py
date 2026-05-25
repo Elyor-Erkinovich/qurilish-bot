@@ -20,7 +20,7 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAWApWixnBNjJPPpCfAVRtUNHOPziNgAPk")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyChUWr8PSabgRkLKoWU-XT_hDpGqSYI2Pc")
 
 # Yangi SDK client
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -126,10 +126,10 @@ async def process_voice(audio_bytes: bytes) -> dict:
 
     except json.JSONDecodeError as e:
         logger.error(f"JSON parse xatosi: {e} | Matn: {raw_text!r}")
-        return None
+        raise RuntimeError(f"Gemini API JSON parse error: {e}")
     except Exception as e:
         logger.error(f"Ovoz qayta ishlashda xato: {type(e).__name__}: {e}")
-        return None
+        raise e
 
 
 EMPLOYEE_USERNAMES = {

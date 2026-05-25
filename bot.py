@@ -148,17 +148,17 @@ async def is_authorized_user(user, bot=None) -> bool:
     if db.get_mapped_employee(user.id) is not None:
         return True
         
-    # 3. Check group membership
-    if bot:
-        in_group = await is_user_in_group(user.id, bot)
-        if not in_group:
-            return False
-            
-    # 4. Check if their username matches any of the registered employee usernames
+    # 3. Check if their username matches any of the registered employee usernames
     username = user.username
     if username:
         target = f"@{username}".lower()
         if target in [u.lower() for u in EMPLOYEE_USERNAMES.values() if u]:
+            return True
+            
+    # 4. Check group membership (optional fallback)
+    if bot:
+        in_group = await is_user_in_group(user.id, bot)
+        if in_group:
             return True
             
     # 5. If they don't have a username, allow access to linking screen if there are unmapped names without usernames

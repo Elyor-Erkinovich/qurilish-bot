@@ -72,7 +72,7 @@ EMPLOYEE_USERNAMES = {
     "Дилноза опа (Уй-жой)": "@Dilnoz_Gafurjanovna",
     "Фаррух (БСК)": "@TFF_077",
     "Зоҳид (Қурилиш)": "@asrorovch",
-    "Жўрабек ака (Қурилиш)": "",
+    "Жўрабек ака (Қурилиш)": "@Jurabek_baxtiyarocih",
     "Одилхон (Қурилиш)": "@odilxon_khusniddinovich",
     "Азамат (Аукцион)": "",
     "Зияд (Қурилиш)": "@ZI7799"

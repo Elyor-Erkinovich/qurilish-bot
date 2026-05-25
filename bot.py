@@ -1,22 +1,29 @@
-import logging
-import os
-import tempfile
-import io
-import csv
-import json
-import urllib.parse
-import re
-from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    filters, ContextTypes, ConversationHandler
-)
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from database import Database
-from reports import generate_daily_report, generate_employee_grouped_report
-from voice_processor import process_voice, format_voice_confirmation
-import pytz
+import sys
+try:
+    import logging
+    import os
+    import tempfile
+    import io
+    import csv
+    import json
+    import urllib.parse
+    import re
+    from datetime import datetime, timedelta
+    from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+    from telegram.ext import (
+        Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+        filters, ContextTypes, ConversationHandler
+    )
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from database import Database
+    from reports import generate_daily_report, generate_employee_grouped_report
+    from voice_processor import process_voice, format_voice_confirmation
+    import pytz
+except Exception as e:
+    import traceback
+    print(f"CRITICAL IMPORT ERROR: {e}", file=sys.stderr, flush=True)
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -2668,4 +2675,11 @@ def main():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        import sys
+        print(f"CRITICAL RUNTIME ERROR: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)

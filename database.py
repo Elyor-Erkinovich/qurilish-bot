@@ -36,78 +36,45 @@ class Database:
         self.init_db()
 
     def get_conn(self):
-        if self.db_url and HAS_POSTGRES and (self.is_postgres or self._postgres_conn is not None):
+        if self.db_url and HAS_POSTGRES:
             if self._postgres_conn is None or self._postgres_conn.closed:
+                self._reconnect_postgres()
+            else:
+                # Active ping to verify connection is physically alive
                 try:
-                    self._postgres_conn = psycopg2.connect(self.db_url)
-                    self._postgres_conn.autocommit = True
-                    self.is_postgres = True
-                except Exception as e:
-                    print(f"DATABASE CONNECTION ERROR: {e}. Falling back to SQLite temporarily.", flush=True)
-                    conn = sqlite3.connect(DB_PATH)
-                    conn.row_factory = sqlite3.Row
-                    return conn
-            return self._postgres_conn
-        else:
-            conn = sqlite3.connect(DB_PATH)
-            conn.row_factory = sqlite3.Row
-            return conn
+                    with self._postgres_conn.cursor() as cur:
+                        cur.execute("SELECT 1")
+                except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                    print("DATABASE WARNING: Connection physically dead. Reconnecting...", flush=True)
+                    self._reconnect_postgres()
+            
+            if self._postgres_conn is not None:
+                return self._postgres_conn
+                
+        # Fallback to SQLite
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _reconnect_postgres(self):
+        try:
+            if self._postgres_conn is not None:
+                try:
+                    self._postgres_conn.close()
+                except Exception:
+                    pass
+            self._postgres_conn = psycopg2.connect(self.db_url)
+            self._postgres_conn.autocommit = True
+            self.is_postgres = True
+        except Exception as e:
+            print(f"DATABASE RECONNECT ERROR: {e}. Falling back to SQLite temporarily.", flush=True)
+            self.is_postgres = False
+            self._postgres_conn = None
 
     def init_db(self):
-        if self.is_postgres:
-            with self.get_conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS tasks (
-                            id SERIAL PRIMARY KEY,
-                            text TEXT NOT NULL,
-                            responsible TEXT NOT NULL,
-                            deadline TEXT NOT NULL,
-                            priority TEXT DEFAULT 'Ўрта',
-                            status TEXT DEFAULT 'Кутяпти',
-                            created_by BIGINT,
-                            created_by_name TEXT,
-                            updated_by TEXT,
-                            created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS'),
-                            updated_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS'),
-                            deadline_alert_sent INTEGER DEFAULT 0
-                        );
-
-                        CREATE TABLE IF NOT EXISTS users (
-                            id SERIAL PRIMARY KEY,
-                            telegram_id BIGINT UNIQUE NOT NULL,
-                            full_name TEXT,
-                            username TEXT,
-                            mapped_employee TEXT,
-                            created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
-                        );
-
-                        CREATE TABLE IF NOT EXISTS groups (
-                            id SERIAL PRIMARY KEY,
-                            chat_id BIGINT UNIQUE NOT NULL,
-                            title TEXT,
-                            created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
-                        );
-
-                        CREATE TABLE IF NOT EXISTS task_history (
-                            id SERIAL PRIMARY KEY,
-                            task_id INTEGER,
-                            old_status TEXT,
-                            new_status TEXT,
-                            changed_by TEXT,
-                            changed_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
-                        );
-
-                        CREATE TABLE IF NOT EXISTS task_attachments (
-                            id SERIAL PRIMARY KEY,
-                            task_id INTEGER,
-                            type TEXT,
-                            content TEXT,
-                            created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
-                        );
-                    """)
-        else:
-            with self.get_conn() as conn:
+        # 1. Initialize SQLite always to ensure fallback database exists
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
                 conn.execute("PRAGMA journal_mode=WAL;")
                 conn.execute("PRAGMA synchronous=NORMAL;")
                 conn.executescript("""
@@ -158,17 +125,76 @@ class Database:
                         created_at TEXT DEFAULT (datetime('now','localtime'))
                     );
                 """)
-
-                # Migrations
                 try:
                     conn.execute("ALTER TABLE users ADD COLUMN mapped_employee TEXT;")
                 except sqlite3.OperationalError:
                     pass
-
                 try:
                     conn.execute("ALTER TABLE tasks ADD COLUMN deadline_alert_sent INTEGER DEFAULT 0;")
                 except sqlite3.OperationalError:
                     pass
+        except Exception as e:
+            print(f"DATABASE WARNING: Failed to initialize SQLite database ({e})", flush=True)
+
+        # 2. Initialize Postgres if configured
+        if self.db_url and HAS_POSTGRES:
+            try:
+                conn = self.get_conn()
+                if self.is_postgres and conn is not None:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS tasks (
+                                id SERIAL PRIMARY KEY,
+                                text TEXT NOT NULL,
+                                responsible TEXT NOT NULL,
+                                deadline TEXT NOT NULL,
+                                priority TEXT DEFAULT 'Ўрта',
+                                status TEXT DEFAULT 'Кутяпти',
+                                created_by BIGINT,
+                                created_by_name TEXT,
+                                updated_by TEXT,
+                                created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS'),
+                                updated_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS'),
+                                deadline_alert_sent INTEGER DEFAULT 0
+                            );
+
+                            CREATE TABLE IF NOT EXISTS users (
+                                id SERIAL PRIMARY KEY,
+                                telegram_id BIGINT UNIQUE NOT NULL,
+                                full_name TEXT,
+                                username TEXT,
+                                mapped_employee TEXT,
+                                created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
+                            );
+
+                            CREATE TABLE IF NOT EXISTS groups (
+                                id SERIAL PRIMARY KEY,
+                                chat_id BIGINT UNIQUE NOT NULL,
+                                title TEXT,
+                                created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
+                            );
+
+                            CREATE TABLE IF NOT EXISTS task_history (
+                                id SERIAL PRIMARY KEY,
+                                task_id INTEGER,
+                                old_status TEXT,
+                                new_status TEXT,
+                                changed_by TEXT,
+                                changed_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
+                            );
+
+                            CREATE TABLE IF NOT EXISTS task_attachments (
+                                id SERIAL PRIMARY KEY,
+                                task_id INTEGER,
+                                type TEXT,
+                                content TEXT,
+                                created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD HH24:MI:SS')
+                            );
+                        """)
+            except Exception as e:
+                print(f"DATABASE WARNING: Failed to initialize PostgreSQL database ({e}). Falling back to SQLite local database.", flush=True)
+                self.is_postgres = False
+                self._postgres_conn = None
 
     # ─── Users ────────────────────────────────────────────────────────────────
 

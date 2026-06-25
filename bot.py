@@ -2647,6 +2647,12 @@ def split_message(text, max_len=4000):
 # ─── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    # Prevent conflict by exiting if running on Render environment
+    if os.getenv("RENDER") == "true" or os.getenv("DATABASE_URL") is not None:
+        import sys
+        print("Running on Render. Exiting to avoid conflict with local server.", flush=True)
+        sys.exit(0)
+
     app = Application.builder().token(TOKEN).build()
     
     # Combined main conversation handler

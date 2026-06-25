@@ -18,6 +18,7 @@ try:
     from database import Database
     from reports import generate_daily_report, generate_employee_grouped_report
     from voice_processor import process_voice, format_voice_confirmation
+    from functools import wraps
     import pytz
 except Exception as e:
     import traceback
@@ -60,7 +61,8 @@ EMPLOYEES = [
     "Жўрабек ака (Қурилиш)",
     "Одилхон (Қурилиш)",
     "Азамат (Аукцион)",
-    "Зияд (Қурилиш)"
+    "Зияд (Қурилиш)",
+    "Алишер (коммунал)"
 ]
 
 EMPLOYEE_USERNAMES = {
@@ -75,7 +77,8 @@ EMPLOYEE_USERNAMES = {
     "Жўрабек ака (Қурилиш)": "@Jurabek_baxtiyarocih",
     "Одилхон (Қурилиш)": "@odilxon_khusniddinovich",
     "Азамат (Аукцион)": "",
-    "Зияд (Қурилиш)": "@ZI7799"
+    "Зияд (Қурилиш)": "@ZI7799",
+    "Алишер (коммунал)": "@Abubakr_Abuayyub"
 }
 
 def get_responsible_display(responsible_name: str) -> str:
@@ -136,6 +139,45 @@ async def is_user_in_group(user_id: int, bot) -> bool:
             logger.error(f"Error checking group membership in group {g['chat_id']}: {e}")
             continue
     return False
+
+async def check_menu_intent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
+    """
+    Checks if the user's message is a main menu command.
+    If so, routes to that command and returns the new state or ConversationHandler.END.
+    """
+    if not update.message or not update.message.text:
+        return None
+        
+    text = update.message.text.strip()
+    
+    if text == "➕ Топшириқ қўшиш":
+        await add_task_start(update, context)
+        return TASK_TEXT
+    elif text in ["📋 Топшириқлар жадвали", "📋 Жадвал кўриш"]:
+        await schedule_start(update, context)
+        return SCHEDULE_MENU
+    elif text == "📋 Менинг вазифаларим":
+        await my_tasks_start(update, context)
+        return ConversationHandler.END
+    elif text == "📊 Статистика":
+        await view_statistics(update, context)
+        return ConversationHandler.END
+    elif text == "👥 Ходимлар рейтинги":
+        await employee_rating(update, context)
+        return ConversationHandler.END
+    elif text == "❌ Бекор қилиш":
+        return await cancel(update, context)
+        
+    return None
+
+def check_menu_override(func):
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        menu_state = await check_menu_intent(update, context)
+        if menu_state is not None:
+            return menu_state
+        return await func(update, context, *args, **kwargs)
+    return wrapper
 
 async def is_authorized_user(user, bot=None) -> bool:
     if not user:
@@ -416,6 +458,14 @@ def main_reply_keyboard():
         ["📋 Менинг вазифаларим"]
     ], resize_keyboard=True)
 
+def employee_main_keyboard(emp_name: str):
+    """Main keyboard for employees when they have no active tasks."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Самарадорлик графиги", callback_data=f"emp_chart:{emp_name}"),
+         InlineKeyboardButton("📖 Ботдан фойдаланиш йўриқномаси", callback_data="employee_manual")],
+        [InlineKeyboardButton("❌ Бекор қилиш", callback_data="cancel_action")]
+    ])
+
 def employee_keyboard(prefix: str):
     """Employee selection inline keyboard."""
     keyboard = []
@@ -435,6 +485,7 @@ def employee_report_keyboard(employee_name: str):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"➕ {employee_name}га топшириқ қўшиш", callback_data=f"emp_add_task:{employee_name}")],
         [InlineKeyboardButton(f"⚙️ {employee_name} вазифасини янгилаш", callback_data=f"emp_update_task:{employee_name}")],
+        [InlineKeyboardButton("✅ Бажарилган топшириқлар", callback_data=f"emp_completed:{employee_name}")],
         [InlineKeyboardButton("🔄 Бошқа ходимлар", callback_data="sched_by_emp"),
          InlineKeyboardButton("❌ Бекор қилиш", callback_data="cancel_action")]
     ])
@@ -461,7 +512,8 @@ def status_keyboard(task_id: int, prefix="gen_status_update"):
 def schedule_keyboard():
     """Schedule menu inline keyboard."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌐 Умумий жадвал", callback_data="sched_general")],
+        [InlineKeyboardButton("🌐 Умумий фаол жадвал", callback_data="sched_general"),
+         InlineKeyboardButton("✅ Бажарилган топшириқлар", callback_data="sched_completed")],
         [InlineKeyboardButton("👤 Ходимлар бўйича", callback_data="sched_by_emp"),
          InlineKeyboardButton("📅 Ҳафталик тақвим", callback_data="sched_weekly")],
         [InlineKeyboardButton("✅ Ҳолатни янгилаш", callback_data="sched_update"),
@@ -574,6 +626,7 @@ async def add_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['prompt_message_id'] = sent_msg.message_id
     return TASK_TEXT
 
+@check_menu_override
 async def add_task_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         if not update.message.reply_to_message or update.message.reply_to_message.message_id != context.user_data.get('prompt_message_id'):
@@ -617,6 +670,7 @@ async def add_task_emp_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data['prompt_message_id'] = sent_msg.message_id
         return TASK_RESPONSIBLE
 
+@check_menu_override
 async def add_task_responsible(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         if not update.message.reply_to_message or update.message.reply_to_message.message_id != context.user_data.get('prompt_message_id'):
@@ -638,6 +692,7 @@ async def add_task_responsible(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['prompt_message_id'] = sent_msg.message_id
     return TASK_DEADLINE
 
+@check_menu_override
 async def add_task_deadline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         if not update.message.reply_to_message or update.message.reply_to_message.message_id != context.user_data.get('prompt_message_id'):
@@ -651,6 +706,7 @@ async def add_task_deadline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['prompt_message_id'] = sent_msg.message_id
     return TASK_PRIORITY
 
+@check_menu_override
 async def add_task_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -748,6 +804,7 @@ async def schedule_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['prompt_message_id'] = sent_msg.message_id
     return SCHEDULE_MENU
 
+@check_menu_override
 async def schedule_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ""
     query = None
@@ -761,17 +818,42 @@ async def schedule_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⬅️ Асосий меню", reply_markup=main_reply_keyboard())
             return ConversationHandler.END
             
-    if text == "sched_general" or text == "🌐 Умумий жадвал":
-        tasks = db.get_all_tasks()
+    if text == "sched_general" or text == "🌐 Умумий фаол жадвал":
+        tasks = db.get_active_tasks()
         if not tasks:
-            msg_text = "📋 Ҳозирча топшириқлар мавжуд эмас."
+            msg_text = "📋 Ҳозирча фаол топшириқлар мавжуд эмас."
             if query:
                 await query.message.edit_text(msg_text, reply_markup=schedule_keyboard())
             else:
                 await update.message.reply_text(msg_text, reply_markup=schedule_keyboard())
             return SCHEDULE_MENU
 
-        report = generate_employee_grouped_report(tasks, header="🌐 <b>УМУМИЙ ТОПШИРИҚЛАР ЖАДВАЛИ (ХОДИМЛАР КЕСИМИДА)</b>", employees=EMPLOYEES)
+        report = generate_employee_grouped_report(tasks, header="🌐 <b>УМУМИЙ ФАОЛ ТОПШИРИҚЛАР ЖАДВАЛИ (ХОДИМЛАР КЕСИМИДА)</b>", employees=EMPLOYEES)
+        chunks = split_message(report)
+        for chunk in chunks[:-1]:
+            if query:
+                await query.message.reply_text(chunk, parse_mode="HTML")
+            else:
+                await update.message.reply_text(chunk, parse_mode="HTML")
+                
+        if query:
+            await query.message.reply_text(chunks[-1], parse_mode="HTML", reply_markup=schedule_keyboard())
+        else:
+            await update.message.reply_text(chunks[-1], parse_mode="HTML", reply_markup=schedule_keyboard())
+        return SCHEDULE_MENU
+
+    if text == "sched_completed" or text == "✅ Бажарилган топшириқлар":
+        all_tasks = db.get_all_tasks()
+        tasks = [t for t in all_tasks if t['status'] == 'Бажарилди']
+        if not tasks:
+            msg_text = "✅ Ҳозирча бажарилган топшириқлар мавжуд эмас."
+            if query:
+                await query.message.edit_text(msg_text, reply_markup=schedule_keyboard())
+            else:
+                await update.message.reply_text(msg_text, reply_markup=schedule_keyboard())
+            return SCHEDULE_MENU
+
+        report = generate_employee_grouped_report(tasks, header="✅ <b>БАЖАРИЛГАН ТОПШИРИҚЛАР РЎЙХАТИ (ХОДИМЛАР КЕСИМИДА)</b>", employees=EMPLOYEES)
         chunks = split_message(report)
         for chunk in chunks[:-1]:
             if query:
@@ -1037,6 +1119,7 @@ async def schedule_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return SCHEDULE_MENU
 
+@check_menu_override
 async def schedule_employee_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     emp = ""
     query = None
@@ -1084,11 +1167,12 @@ async def show_employee_report_and_actions(update: Update, context: ContextTypes
         f"{bar}\n\n"
     )
 
-    if not tasks:
-        report += "📭 Ушбу ходимда ҳозирча топшириқлар мавжуд эмас.\n"
+    active_tasks = [t for t in tasks if t['status'] not in ['Бажарилди', 'Бекор қилинди']]
+    if not active_tasks:
+        report += "📭 Ушбу ходимда фаол топшириқлар мавжуд эмас.\n"
     else:
-        report += "📋 <b>ТОПШИРИҚЛАР РЎЙХАТИ:</b>\n\n"
-        for i, t in enumerate(tasks, 1):
+        report += "📋 <b>ФАОЛ ТОПШИРИҚЛАР РЎЙХАТИ:</b>\n\n"
+        for i, t in enumerate(active_tasks, 1):
             status_emoji = {"Кутяпти": "⏳", "Жараёнда": "🔄", "Бажарилди": "✅", "Бекор қилинди": "❌"}.get(t['status'], "❓")
             priority_emoji = {"Юқори": "🔴", "Ўрта": "🟡", "Паст": "🟢"}.get(t['priority'], "🟡")
 
@@ -1135,6 +1219,7 @@ async def show_employee_report_and_actions(update: Update, context: ContextTypes
     context.user_data['prompt_message_id'] = sent_msg.message_id
     return SCHEDULE_EMPLOYEE_ACTION
 
+@check_menu_override
 async def schedule_employee_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = ""
     query = None
@@ -1202,6 +1287,7 @@ async def schedule_employee_action(update: Update, context: ContextTypes.DEFAULT
 
     return SCHEDULE_EMPLOYEE_ACTION
 
+@check_menu_override
 async def schedule_employee_add_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         if not update.message.reply_to_message or update.message.reply_to_message.message_id != context.user_data.get('prompt_message_id'):
@@ -1219,6 +1305,7 @@ async def schedule_employee_add_text(update: Update, context: ContextTypes.DEFAU
     context.user_data['prompt_message_id'] = sent_msg.message_id
     return SCHEDULE_EMPLOYEE_ADD_DEADLINE
 
+@check_menu_override
 async def schedule_employee_add_deadline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         if not update.message.reply_to_message or update.message.reply_to_message.message_id != context.user_data.get('prompt_message_id'):
@@ -1234,6 +1321,7 @@ async def schedule_employee_add_deadline(update: Update, context: ContextTypes.D
     context.user_data['prompt_message_id'] = sent_msg.message_id
     return SCHEDULE_EMPLOYEE_ADD_PRIORITY
 
+@check_menu_override
 async def schedule_employee_add_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1289,6 +1377,7 @@ async def schedule_employee_add_priority(update: Update, context: ContextTypes.D
 
     return await show_employee_report_and_actions(update, context, emp)
 
+@check_menu_override
 async def schedule_employee_update_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1329,6 +1418,7 @@ async def schedule_employee_update_id(update: Update, context: ContextTypes.DEFA
         await update.message.reply_text("Илтимос, топшириқ рақамини киритинг:")
         return SCHEDULE_EMPLOYEE_UPDATE_ID
 
+@check_menu_override
 async def schedule_employee_update_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1372,6 +1462,7 @@ async def schedule_employee_update_status(update: Update, context: ContextTypes.
     emp = context.user_data.get('report_emp_name')
     return await show_employee_report_and_actions(update, context, emp)
 
+@check_menu_override
 async def schedule_general_update_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1402,6 +1493,7 @@ async def schedule_general_update_id(update: Update, context: ContextTypes.DEFAU
         await update.message.reply_text("Илтимос, рақам киритинг:")
         return SCHEDULE_GENERAL_UPDATE_ID
 
+@check_menu_override
 async def schedule_general_update_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1444,6 +1536,7 @@ async def schedule_general_update_status(update: Update, context: ContextTypes.D
 
     return await schedule_start(update, context)
 
+@check_menu_override
 async def schedule_delete_task_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1475,6 +1568,7 @@ async def schedule_delete_task_id(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("Илтимос, топшириқ рақамини киритинг:")
         return SCHEDULE_DELETE_TASK_ID
 
+@check_menu_override
 async def schedule_add_attachment_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1507,6 +1601,7 @@ async def schedule_add_attachment_id(update: Update, context: ContextTypes.DEFAU
         await update.message.reply_text("Илтимос, рақам киритинг:")
         return SCHEDULE_ADD_ATTACH_TASK_ID
 
+@check_menu_override
 async def schedule_add_attachment_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_manager(user):
@@ -1844,7 +1939,7 @@ async def show_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE, emp_
     text = f"👤 <b>Менинг вазифаларим: {emp_name}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
     if not active_tasks:
         text += "📭 Сизда ҳозирда фаол вазифалар мавжуд эмас! Баракалла! 🎉"
-        reply_markup = main_keyboard()
+        reply_markup = employee_main_keyboard(emp_name)
         
         if update.callback_query:
             await update.callback_query.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
@@ -1880,8 +1975,14 @@ async def show_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE, emp_
     keyboard = []
     for t in active_tasks[:5]:
         keyboard.append([InlineKeyboardButton(f"✅ #{t['id']} бажарилди деб белгилашни сўраш", callback_data=f"request_complete:{t['id']}")])
-    keyboard.append([InlineKeyboardButton("📊 Менинг самарадорлигим (График)", callback_data=f"emp_chart:{emp_name}")])
-    keyboard.append([InlineKeyboardButton("❌ Бекор қилиш", callback_data="cancel_action")])
+    keyboard.append([
+        InlineKeyboardButton("✅ Бажарилган вазифалар", callback_data="my_completed_tasks"),
+        InlineKeyboardButton("📊 Менинг самарадорлигим (График)", callback_data=f"emp_chart:{emp_name}")
+    ])
+    keyboard.append([
+        InlineKeyboardButton("📖 Ботдан фойдаланиш йўриқномаси", callback_data="employee_manual"),
+        InlineKeyboardButton("❌ Бекор қилиш", callback_data="cancel_action")
+    ])
     
     if update.callback_query:
         await update.callback_query.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -1923,6 +2024,125 @@ async def handle_link_account(update: Update, context: ContextTypes.DEFAULT_TYPE
             [InlineKeyboardButton("❌ Бекор қилиш", callback_data="cancel_action")]
         ])
     )
+
+async def handle_employee_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    text = (
+        "📖 <b>ХОДИМЛАР УЧУН БОТДАН ФОЙДАЛАНИШ ЙЎРИҚНОМАСИ</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Ҳурматли ходим, ушбу бот орқали вазифаларингизни кузатиб боришингиз ва уларнинг ижросини раҳбариятга тасдиқлаш учун юборишингиз мумкин.\n\n"
+        "🔍 <b>Асосий имкониятлар:</b>\n\n"
+        "1️⃣ <b>Менинг вазифаларим бўлими:</b>\n"
+        "Пастки клавиатурадаги <code>📋 Менинг вазифаларим</code> тугмасини босинг ёки шахсий чатда <code>/my_tasks</code> буйруғини юборинг.\n\n"
+        "2️⃣ <b>Вазифани бажарилди деб белгилаш (Ижрони тасдиқлаш сўрови):</b>\n"
+        "Вазифа остидаги <code>✅ #ID бажарилди деб белгилашни сўраш</code> тугмасини босинг. Бот сиздан бажарилган ишнинг фотосуратини (ёки Excel/ҳужжат файлини) юборишни сўрайди.\n"
+        "• Расм ёки файлни чатга оддий хабар қилиб юборинг.\n"
+        "• Агар расмингиз бўлмаса, <code>❌ Расмисиз юбориш</code> тугмасини босинг.\n"
+        "• Сўров юборилгандан сўнг раҳбарият ушбу вазифани кўриб чиқади ва тасдиқлаганидан кейин вазифа автоматик равишда бажарилган деб белгиланади.\n\n"
+        "3️⃣ <b>Самарадорлик графиги:</b>\n"
+        "Вазифаларингиз остидаги <code>📊 Менинг самарадорлигим (График)</code> тугмасини босиб, бажарилган ва бажарилмаган вазифаларингиз статистикасини кўришингиз мумкин.\n\n"
+        "4️⃣ <b>Автоматик эслатмалар:</b>\n"
+        "• Ҳар куни соат 09:00 да бугунги ва муддати ўтган топшириқлар эслатилади.\n"
+        "• Топшириқ муддатига 3 соат қолганида бот сизга алоҳида огоҳлантириш юборади."
+    )
+    
+    # Check if user is mapped to show a back button
+    user = update.effective_user
+    mapped_emp = db.get_mapped_employee(user.id)
+    
+    keyboard = []
+    if mapped_emp:
+        keyboard.append([InlineKeyboardButton("🔙 Менинг вазифаларимга қайтиш", callback_data="my_tasks_view")])
+    else:
+        keyboard.append([InlineKeyboardButton("❌ Ёпиш", callback_data="cancel_action")])
+        
+    await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def handle_my_completed_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    telegram_id = user.id
+    mapped_emp = db.get_mapped_employee(telegram_id)
+    
+    if not mapped_emp:
+        await query.message.reply_text("❌ Аккаунтингиз ходимга боғланмаган.", parse_mode="HTML")
+        return
+        
+    tasks = db.get_employee_tasks(mapped_emp)
+    completed_tasks = [t for t in tasks if t['status'] == 'Бажарилди']
+    
+    text = f"👤 <b>Бажарилган вазифаларим: {mapped_emp}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    if not completed_tasks:
+        text += "📭 Сизда бажарилган вазифалар ҳозирча йўқ."
+    else:
+        for i, t in enumerate(completed_tasks, 1):
+            priority_emoji = {"Юқори": "🔴", "Ўрта": "🟡", "Паст": "🟢"}.get(t['priority'], "🟡")
+            text += (
+                f"<b>{i}. #{t['id']} {t['text']}</b>\n"
+                f"   Приоритет: {priority_emoji} {t['priority']}\n"
+                f"   Бажарилган вақти: 🕐 {t['updated_at']}\n\n"
+            )
+            
+    keyboard = [
+        [InlineKeyboardButton("🔙 Менинг вазифаларимга қайтиш", callback_data="my_tasks_view")],
+        [InlineKeyboardButton("❌ Ёпиш", callback_data="cancel_action")]
+    ]
+    
+    # Send report in chunks to avoid telegram message limit
+    chunks = split_message(text)
+    for chunk in chunks[:-1]:
+        await query.message.reply_text(chunk, parse_mode="HTML")
+    await query.message.reply_text(chunks[-1], parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def handle_emp_completed_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    emp_name = query.data.split(":", 1)[1]
+    tasks = db.get_employee_tasks(emp_name)
+    completed_tasks = [t for t in tasks if t['status'] == 'Бажарилди']
+    
+    text = f"👤 <b>Бажарилган топшириқлар: {emp_name}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    if not completed_tasks:
+        text += "📭 Ушбу ходимда бажарилган топшириқлар ҳозирча йўқ."
+    else:
+        for i, t in enumerate(completed_tasks, 1):
+            priority_emoji = {"Юқори": "🔴", "Ўрта": "🟡", "Паст": "🟢"}.get(t['priority'], "🟡")
+            text += (
+                f"<b>{i}. #{t['id']} {t['text']}</b>\n"
+                f"   Приоритет: {priority_emoji} {t['priority']}\n"
+                f"   Бажарилган вақти: 🕐 {t['updated_at']}\n"
+            )
+            attachments = db.get_task_attachments(t['id'])
+            if attachments:
+                text += "   💬 <b>Изоҳлар/Файллар:</b>\n"
+                for att in attachments:
+                    att_time = att['created_at']
+                    if att['type'] == 'text':
+                        text += f"     • {att['content']} (📅 {att_time})\n"
+                    else:
+                        caption = att['content'].split("|", 1)[1] if "|" in att['content'] else ""
+                        file_type = "Расм" if att['type'] == 'photo' else "Ҳужжат"
+                        if caption:
+                            text += f"     • [{file_type}] {caption} (📅 {att_time})\n"
+                        else:
+                            text += f"     • [{file_type}] (📅 {att_time})\n"
+            text += "\n"
+            
+    keyboard = [
+        [InlineKeyboardButton("🔙 Ходим ҳисоботига қайтиш", callback_data=f"select_emp:{emp_name}")],
+        [InlineKeyboardButton("❌ Ёпиш", callback_data="cancel_action")]
+    ]
+    
+    # Send report in chunks to avoid telegram message limit
+    chunks = split_message(text)
+    for chunk in chunks[:-1]:
+        await query.message.reply_text(chunk, parse_mode="HTML")
+    await query.message.reply_text(chunks[-1], parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def handle_employee_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2170,13 +2390,17 @@ async def handle_approve_complete(update: Update, context: ContextTypes.DEFAULT_
         
     db.update_task_status(task_id, "Бажарилди", user.full_name)
     
-    await query.message.edit_text(
+    confirm_text = (
         f"✅ <b>Топшириқ #{task_id} бажарилганлиги тасдиқланди!</b>\n\n"
         f"📌 <b>Топшириқ:</b> {task['text']}\n"
         f"👤 <b>Масъул:</b> {task['responsible']}\n"
-        f"💼 <b>Тасдиқлади:</b> {user.full_name}",
-        parse_mode="HTML"
+        f"💼 <b>Тасдиқлади:</b> {user.full_name}"
     )
+    
+    if query.message.caption or query.message.photo or query.message.document:
+        await query.message.edit_caption(confirm_text, parse_mode="HTML")
+    else:
+        await query.message.edit_text(confirm_text, parse_mode="HTML")
     
     emp_user = db.get_user_by_mapped_employee(task['responsible'])
     if emp_user:
@@ -2205,13 +2429,17 @@ async def handle_reject_complete(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.edit_text("❌ Топшириқ топилмади.")
         return
         
-    await query.message.edit_text(
+    reject_text = (
         f"❌ <b>Топшириқ #{task_id} бажарилганлиги рад этилди!</b>\n\n"
         f"📌 <b>Топшириқ:</b> {task['text']}\n"
         f"👤 <b>Масъул:</b> {task['responsible']}\n"
-        f"💼 <b>Рад этди:</b> {user.full_name}",
-        parse_mode="HTML"
+        f"💼 <b>Рад этди:</b> {user.full_name}"
     )
+    
+    if query.message.caption or query.message.photo or query.message.document:
+        await query.message.edit_caption(reject_text, parse_mode="HTML")
+    else:
+        await query.message.edit_text(reject_text, parse_mode="HTML")
     
     emp_user = db.get_user_by_mapped_employee(task['responsible'])
     if emp_user:
@@ -2223,8 +2451,6 @@ async def handle_reject_complete(update: Update, context: ContextTypes.DEFAULT_T
             )
         except Exception as e:
             logger.error(f"Could not notify employee of rejection: {e}")
-
-# ─── Silent Voice Command Handler ──────────────────────────────────────────────
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.effective_chat.type
@@ -2303,26 +2529,22 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             created_by_name=user.full_name,
             bot=context.bot
         )
-
-        confirmation = format_voice_confirmation(task_data, task_id)
-        await update.message.reply_text(
-            confirmation, 
-            parse_mode="HTML",
-            reply_markup=main_keyboard()
+        confirm_text = (
+            f"✅ <b>Топшириқ #{task_id} қўшилди!</b>\n\n"
+            f"📌 <b>Топшириқ:</b> {task_data['task_text']}\n"
+            f"👤 <b>Масъул:</b> {get_responsible_display(task_data['responsible'])}\n"
+            f"📅 <b>Муддат:</b> {task_data['deadline']}\n"
+            f"🚦 <b>Приоритет:</b> {task_data['priority']}"
         )
-        logger.info(f"Ovozli vazifa #{task_id} saqlandi: {user.full_name}")
+        await update.message.reply_text(confirm_text, parse_mode="HTML", reply_markup=main_keyboard())
         return ConversationHandler.END
-
     except Exception as e:
-        logger.error(f"handle_voice xatosi: {e}")
-        await update.message.reply_text(
-            "❌ <b>Хатолик юз берди.</b>\n"
-            f"<code>{str(e)[:200]}</code>\n\n"
-            "Илтимос қайтадан уриниб кўринг.",
-            parse_mode="HTML",
-            reply_markup=main_keyboard()
-        )
+        logger.error(f"Voice task creation error: {e}")
+        await update.message.reply_text(f"❌ Овозли топшириқ яратишда хатолик юз берди: {e}", reply_markup=main_keyboard())
         return ConversationHandler.END
+
+
+
 
 # ─── In Progress Tasks Scheduler (11:00) ───────────────────────────────────────
 
@@ -2372,7 +2594,7 @@ async def send_inprogress_tasks_report(app):
 # ─── Daily Report Scheduler ────────────────────────────────────────────────────
 
 async def send_daily_report(app):
-    tasks = db.get_all_tasks()
+    tasks = db.get_active_tasks()
     stats = db.get_employee_statistics()
     
     report = generate_daily_report(tasks, header="🕓 <b>КУНДАЛИК ҲИСОБОТ — 16:00</b>")
@@ -2427,15 +2649,18 @@ def split_message(text, max_len=4000):
 def main():
     app = Application.builder().token(TOKEN).build()
     
-    # Add task conversation handler
-    add_task_conv = ConversationHandler(
+    # Combined main conversation handler
+    main_conv = ConversationHandler(
         entry_points=[
             CommandHandler("add_task", add_task_start),
             CallbackQueryHandler(add_task_start, pattern="^main_add_task$"),
             MessageHandler(filters.Regex("^➕ Топшириқ қўшиш$"), add_task_start),
+            CallbackQueryHandler(schedule_start, pattern="^main_schedule$"),
+            MessageHandler(filters.Regex("^(📋 Топшириқлар жадвали|📋 Жадвал кўриш)$"), schedule_start),
             MessageHandler(filters.VOICE, handle_voice)
         ],
         states={
+            # Add task states
             TASK_TEXT: [
                 CallbackQueryHandler(cancel_callback, pattern="^cancel_action$"),
                 CallbackQueryHandler(add_task_emp_click, pattern="^add_emp:"),
@@ -2459,25 +2684,10 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_task_priority),
                 MessageHandler(filters.VOICE, handle_voice)
             ],
-        },
-        fallbacks=[
-            CallbackQueryHandler(cancel_callback, pattern="^cancel_action$"),
-            MessageHandler(filters.Regex("^❌ Бекор қилиш$"), cancel),
-            CommandHandler("start", start)
-        ],
-    )
-    
-    # Schedule & reports conversation handler
-    schedule_conv = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(schedule_start, pattern="^main_schedule$"),
-            MessageHandler(filters.Regex("^(📋 Топшириқлар жадвали|📋 Жадвал кўриш)$"), schedule_start),
-            MessageHandler(filters.VOICE, handle_voice)
-        ],
-        states={
+            # Schedule & reports states
             SCHEDULE_MENU: [
                 CallbackQueryHandler(cancel_callback, pattern="^cancel_action$"),
-                CallbackQueryHandler(schedule_show, pattern="^(sched_general|sched_by_emp|sched_weekly|sched_update|sched_delete|sched_export|sched_add_attachment|cancel_action)$"),
+                CallbackQueryHandler(schedule_show, pattern="^(sched_general|sched_completed|sched_by_emp|sched_weekly|sched_update|sched_delete|sched_export|sched_add_attachment|cancel_action)$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, schedule_show),
                 MessageHandler(filters.VOICE, handle_voice)
             ],
@@ -2562,8 +2772,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("del_task", delete_task))
     app.add_handler(CommandHandler("my_tasks", my_tasks_start))
-    app.add_handler(add_task_conv)
-    app.add_handler(schedule_conv)
+    app.add_handler(main_conv)
     
     # Callback query button handlers outside active conversations
     app.add_handler(CallbackQueryHandler(start, pattern="^main_menu$"))
@@ -2580,6 +2789,9 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_send_no_photo, pattern="^send_no_photo:"))
     app.add_handler(CallbackQueryHandler(handle_cancel_photo_proof, pattern="^cancel_photo_proof$"))
     app.add_handler(CallbackQueryHandler(handle_employee_chart, pattern="^emp_chart:"))
+    app.add_handler(CallbackQueryHandler(handle_employee_manual, pattern="^employee_manual$"))
+    app.add_handler(CallbackQueryHandler(handle_my_completed_tasks, pattern="^my_completed_tasks$"))
+    app.add_handler(CallbackQueryHandler(handle_emp_completed_tasks, pattern="^emp_completed:"))
     
     # Reply filters fallback outside conversations
     app.add_handler(MessageHandler(filters.Regex("^❌ Бекор қилиш$"), cancel))
@@ -2682,6 +2894,34 @@ def main():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
+    import socket
+    import sys
+    import os
+    
+    # Single instance lock using TCP socket
+    _instance_socket = None
+    def ensure_single_instance(port=28371):
+        global _instance_socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(('127.0.0.1', port))
+            s.listen(1)
+            _instance_socket = s
+            logger.info(f"Single instance lock acquired on port {port}.")
+            return True
+        except socket.error:
+            msg = f"CRITICAL: Another instance of the bot is already running (port {port} is busy). Exiting."
+            print(msg, file=sys.stderr, flush=True)
+            try:
+                logger.error(msg)
+            except Exception:
+                pass
+            return False
+
+    port = int(os.environ.get("BOT_LOCK_PORT", 28371))
+    if not ensure_single_instance(port):
+        sys.exit(1)
+        
     try:
         main()
     except Exception as e:

@@ -21,11 +21,16 @@ from google.genai import types
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY is missing! Please configure it in Render's Environment Variables tab.")
+client = None
+if GEMINI_API_KEY:
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        logger.info("Google GenAI Client initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize Google GenAI Client: {e}")
+else:
+    logger.warning("GEMINI_API_KEY environment variable is not set. Voice processing features will be unavailable.")
 
-# Yangi SDK client
-client = genai.Client(api_key=GEMINI_API_KEY)
 MODEL_NAME = "gemini-2.5-flash"
 
 
@@ -56,6 +61,7 @@ Mas'ul shaxslar (responsible) ro'yxati (Faqat ushbu ro'yxatdan tanlang va ko'rsa
 - Одилхон (Қурилиш)
 - Азамат (Аукцион)
 - Зияд (Қурилиш)
+- Алишер (коммунал)
 
 Qoidalar:
 - task_text: topshiriq mohiyatini aniq yozing, o'zbek tilida
@@ -85,6 +91,9 @@ async def process_voice(audio_bytes: bytes) -> dict:
         dict: {task_text, responsible, deadline, priority}
               yoki xato bo'lsa None
     """
+    if not client:
+        logger.error("Voice processing requested but Google GenAI Client is not initialized.")
+        raise RuntimeError("Овозли хабарларни таҳлил қилиш учун GEMINI_API_KEY тизимда созланмаган!")
     raw_text = ""
     try:
         logger.info(f"Audio baytlari qabul qilindi: {len(audio_bytes)} bayt")
@@ -146,7 +155,8 @@ EMPLOYEE_USERNAMES = {
     "Жўрабек ака (Қурилиш)": "",
     "Одилхон (Қурилиш)": "@odilxon_khusniddinovich",
     "Азамат (Аукцион)": "",
-    "Зияд (Қурилиш)": "@ZI7799"
+    "Зияд (Қурилиш)": "@ZI7799",
+    "Алишер (коммунал)": "@Abubakr_Abuayyub"
 }
 
 def format_voice_confirmation(task_data: dict, task_id: int) -> str:
